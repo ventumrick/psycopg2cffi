@@ -16,7 +16,7 @@ from psycopg2cffi._impl import typecasts
 from psycopg2cffi._impl import util
 from psycopg2cffi._impl.adapters import _getquoted
 from psycopg2cffi._impl.exceptions import InterfaceError, ProgrammingError
-
+from psycopg2cffi.sql import Composable
 
 is_32bits = sys.maxsize < 2**32
 
@@ -228,6 +228,9 @@ class Cursor(object):
         """
         self._description = None
         conn = self._conn
+
+        if isinstance(query, Composable):
+            query = query.as_string(conn)
 
         if self._name:
             if self._query:
@@ -480,6 +483,9 @@ class Cursor(object):
     def copy_expert(self, sql, file, size=8192):
         if not sql:
             return
+
+        if isinstance(sql, Composable):
+            sql = sql.as_string(None)
 
         if not hasattr(file, 'read') and not hasattr(file, 'write'):
             raise TypeError("file must be a readable file-like object for"

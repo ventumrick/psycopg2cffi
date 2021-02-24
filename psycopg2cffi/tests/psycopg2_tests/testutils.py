@@ -23,9 +23,12 @@
 
 
 # Use unittest2 if available. Otherwise mock a skip facility with warnings.
-
+import operator
 import os
+import re
 import sys
+import types
+
 import six
 from functools import wraps
 from psycopg2cffi.tests.psycopg2_tests.testconfig import dsn
@@ -118,15 +121,40 @@ class ConnectingTestCase(unittest.TestCase):
 
     conn = property(_get_conn, _set_conn)
 
+    def assertQuotedEqual(self, first, second, msg=None):
+        """Compare two quoted strings disregarding eventual E'' quotes"""
+        def f(s):
+            if isinstance(s, six.text_type):
+                return re.sub(r"\bE'", "'", s)
+            elif isinstance(first, bytes):
+                return re.sub(br"\bE'", b"'", s)
+            else:
+                return s
 
-def decorate_all_tests(cls, *decorators):
+        return self.assertEqual(f(first), f(second), msg)
+
+
+def decorate_all_tests(obj, *decorators):
     """
-    Apply all the *decorators* to all the tests defined in the TestCase *cls*.
+    Apply all the *decorators* to all the tests defined in the TestCase *obj*.
+    The decorator can also be applied to a decorator: if *obj* is a function,
+    return a new decorator which can be applied either to a method or to a
+    class, in which case it will decorate all the tests.
     """
-    for n in dir(cls):
+    if isinstance(obj, types.FunctionType):
+        def decorator(func_or_cls):
+            if isinstance(func_or_cls, types.FunctionType):
+                return obj(func_or_cls)
+            else:
+                decorate_all_tests(func_or_cls, obj)
+                return func_or_cls
+
+        return decorator
+
+    for n in dir(obj):
         if n.startswith('test'):
             for d in decorators:
-                setattr(cls, n, d(getattr(cls, n)))
+                setattr(obj, n, d(getattr(obj, n)))
 
 
 def skip_if_no_uuid(f):
@@ -208,6 +236,7 @@ def skip_if_no_iobase(f):
 def skip_before_postgres(*ver):
     """Skip a test on PostgreSQL before a certain version."""
     ver = ver + (0,) * (3 - len(ver))
+
     def skip_before_postgres_(f):
         @wraps(f)
         def skip_before_postgres__(self):
@@ -220,9 +249,11 @@ def skip_before_postgres(*ver):
         return skip_before_postgres__
     return skip_before_postgres_
 
+
 def skip_after_postgres(*ver):
     """Skip a test on PostgreSQL after (including) a certain version."""
     ver = ver + (0,) * (3 - len(ver))
+
     def skip_after_postgres_(f):
         @wraps(f)
         def skip_after_postgres__(self):
@@ -234,6 +265,7 @@ def skip_after_postgres(*ver):
 
         return skip_after_postgres__
     return skip_after_postgres_
+
 
 def skip_before_python(*ver):
     """Skip a test on Python before a certain version."""
@@ -249,6 +281,7 @@ def skip_before_python(*ver):
         return skip_before_python__
     return skip_before_python_
 
+
 def skip_from_python(*ver):
     """Skip a test on Python after (including) a certain version."""
     def skip_from_python_(f):
@@ -262,6 +295,7 @@ def skip_from_python(*ver):
 
         return skip_from_python__
     return skip_from_python_
+
 
 def skip_if_no_superuser(f):
     """Skip a test if the database user running the test is not a superuser"""
@@ -279,6 +313,7 @@ def skip_if_no_superuser(f):
 
     return skip_if_no_superuser_
 
+
 def skip_if_green(reason):
     def skip_if_green_(f):
         @wraps(f)
@@ -292,7 +327,9 @@ def skip_if_green(reason):
         return skip_if_green__
     return skip_if_green_
 
+
 skip_copy_if_green = skip_if_green("copy in async mode currently not supported")
+
 
 def skip_if_no_getrefcount(f):
     @wraps(f)
@@ -302,6 +339,114 @@ def skip_if_no_getrefcount(f):
         else:
             return f(self)
     return skip_if_no_getrefcount_
+
+
+def crdb_version(conn, __crdb_version=None):
+    """
+    Return the CockroachDB version if that's the db being tested, else None.
+    Return the number as an integer similar to PQserverVersion: return
+    v20.1.3 as 200103.
+    Assume all the connections are on the same db: return a cached result on
+    following calls.
+    """
+    __crdb_version = __crdb_version or list()
+
+    if __crdb_version:
+        return __crdb_version[0]
+
+    # Wrapped with try/except to avoid AttributeError as 'Connection' object has no attribute 'info'.
+    # Should it be ibe implemented?
+    try:
+        sver = conn.info.parameter_status("crdb_version")
+    except AttributeError:
+        sver = None
+
+    if sver is None:
+        __crdb_version.append(None)
+    else:
+        m = re.search(r"\bv(\d+)\.(\d+)\.(\d+)", sver)
+        if not m:
+            raise ValueError(
+                "can't parse CockroachDB version from %s" % sver)
+
+        ver = int(m.group(1)) * 10000 + int(m.group(2)) * 100 + int(m.group(3))
+        __crdb_version.append(ver)
+
+    return __crdb_version[0]
+
+
+def skip_if_crdb(reason, conn=None, version=None):
+    """Skip a test or test class if we are testing against CockroachDB.
+    Can be used as a decorator for tests function or classes:
+        @skip_if_crdb("my reason")
+        class SomeUnitTest(UnitTest):
+            # ...
+    Or as a normal function if the *conn* argument is passed.
+    If *version* is specified it should be a string such as ">= 20.1", "< 20",
+    "== 20.1.3": the test will be skipped only if the version matches.
+    """
+    if not isinstance(reason, six.string_types):
+        raise TypeError("reason should be a string, got %r instead" % reason)
+
+    if conn is not None:
+        ver = crdb_version(conn)
+        if ver is not None and _crdb_match_version(ver, version):
+            if reason in crdb_reasons:
+                reason = (
+                    "%s (https://github.com/cockroachdb/cockroach/issues/%s)"
+                    % (reason, crdb_reasons[reason]))
+            raise unittest.SkipTest(
+                "not supported on CockroachDB %s: %s" % (ver, reason))
+
+    @decorate_all_tests
+    def skip_if_crdb_(f):
+        @wraps(f)
+        def skip_if_crdb__(self, *args, **kwargs):
+            skip_if_crdb(reason, conn=self.connect(), version=version)
+            return f(self, *args, **kwargs)
+
+        return skip_if_crdb__
+
+    return skip_if_crdb_
+
+
+crdb_reasons = {
+    "2-phase commit": 22329,
+    "backend pid": 35897,
+    "cancel": 41335,
+    "cast adds tz": 51692,
+    "cidr": 18846,
+    "composite": 27792,
+    "copy": 41608,
+    "deferrable": 48307,
+    "encoding": 35882,
+    "hstore": 41284,
+    "infinity date": 41564,
+    "interval style": 35807,
+    "large objects": 243,
+    "named cursor": 41412,
+    "nested array": 32552,
+    "notify": 41522,
+    "range": 41282,
+    "stored procedure": 1751,
+}
+
+
+def _crdb_match_version(version, pattern):
+    if pattern is None:
+        return True
+
+    m = re.match(r'^(>|>=|<|<=|==|!=)\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?$', pattern)
+    if m is None:
+        raise ValueError(
+            "bad crdb version pattern %r: should be 'OP MAJOR[.MINOR[.BUGFIX]]'"
+            % pattern)
+
+    ops = {'>': 'gt', '>=': 'ge', '<': 'lt', '<=': 'le', '==': 'eq', '!=': 'ne'}
+    op = getattr(operator, ops[m.group(1)])
+    ref = int(m.group(2)) * 10000 + int(m.group(3) or 0) * 100 + int(m.group(4) or 0)
+    return op(version, ref)
+
 
 def script_to_py3(script):
     """Convert a script to Python3 syntax if required."""

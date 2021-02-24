@@ -34,6 +34,7 @@ from __future__ import unicode_literals
 # ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
 # FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public
 # License for more details.
+import re
 import sys as _sys
 
 from psycopg2cffi._impl import connection as _connection
@@ -138,3 +139,18 @@ def set_wait_callback(f):
 
 def get_wait_callback():
     return _connection._green_callback
+
+
+quote_ident_re = re.compile(r'(\w+)\"(\w+)', re.IGNORECASE)
+
+
+def quote_ident(p_str, conn_or_curs):  # real signature unknown; restored from __doc__
+    """
+    quote_ident(str, conn_or_curs) -> str -- wrapper around PQescapeIdentifier
+
+    :Parameters:
+      * `str`: A bytes or unicode object
+      * `conn_or_curs`: A connection or cursor, required
+    """
+    # FixMe: Bad workaround as original function signature is not available
+    return '"%s"' % quote_ident_re.sub(r'\1""\2', p_str).strip('"')

@@ -44,27 +44,27 @@ class SqlFormatTests(ConnectingTestCase):
         s = sql.SQL("select {} from {}").format(
             sql.Identifier('field'), sql.Identifier('table'))
         s1 = s.as_string(self.conn)
-        self.assert_(isinstance(s1, str))
+        self.assert_(isinstance(s1, six.string_types))
         self.assertEqual(s1, 'select "field" from "table"')
 
     def test_pos_spec(self):
         s = sql.SQL("select {0} from {1}").format(
             sql.Identifier('field'), sql.Identifier('table'))
         s1 = s.as_string(self.conn)
-        self.assert_(isinstance(s1, str))
+        self.assert_(isinstance(s1, six.string_types))
         self.assertEqual(s1, 'select "field" from "table"')
 
         s = sql.SQL("select {1} from {0}").format(
             sql.Identifier('table'), sql.Identifier('field'))
         s1 = s.as_string(self.conn)
-        self.assert_(isinstance(s1, str))
+        self.assert_(isinstance(s1, six.string_types))
         self.assertEqual(s1, 'select "field" from "table"')
 
     def test_dict(self):
         s = sql.SQL("select {f} from {t}").format(
             f=sql.Identifier('field'), t=sql.Identifier('table'))
         s1 = s.as_string(self.conn)
-        self.assert_(isinstance(s1, str))
+        self.assert_(isinstance(s1, six.string_types))
         self.assertEqual(s1, 'select "field" from "table"')
 
     def test_unicode(self):

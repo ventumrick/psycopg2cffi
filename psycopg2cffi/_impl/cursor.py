@@ -16,7 +16,6 @@ from psycopg2cffi._impl import typecasts
 from psycopg2cffi._impl import util
 from psycopg2cffi._impl.adapters import _getquoted
 from psycopg2cffi._impl.exceptions import InterfaceError, ProgrammingError
-from psycopg2cffi.sql import Composable
 
 is_32bits = sys.maxsize < 2**32
 
@@ -229,7 +228,7 @@ class Cursor(object):
         self._description = None
         conn = self._conn
 
-        if isinstance(query, Composable):
+        if hasattr(query, 'as_string'):
             query = query.as_string(conn)
 
         if self._name:
@@ -484,7 +483,7 @@ class Cursor(object):
         if not sql:
             return
 
-        if isinstance(sql, Composable):
+        if hasattr(sql, 'as_string'):
             sql = sql.as_string(None)
 
         if not hasattr(file, 'read') and not hasattr(file, 'write'):

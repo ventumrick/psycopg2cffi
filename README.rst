@@ -3,8 +3,10 @@
 
 .. contents::
 
-An implementation of the psycopg2 module using cffi.
+An implementation of the psycopg2 module using cffi_.
 The module is currently compatible with Psycopg 2.5.
+
+.. _cffi: https://cffi.readthedocs.io
 
 Installation
 ------------

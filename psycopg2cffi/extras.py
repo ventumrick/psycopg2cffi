@@ -331,7 +331,10 @@ class NamedTupleCursor(_cursor):
 
     def __iter__(self):
         it = super(NamedTupleCursor, self).__iter__()
-        t = six.next(it)
+        try:
+            t = six.next(it)
+        except StopIteration:
+            return
 
         nt = self.Record
         if nt is None:

@@ -20,6 +20,6 @@ class Pep479Tests(unittest.TestCase):
         self.conn.close()
 
     def test(self):
-    		curs = self.conn.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
-    		curs.execute("select 1 as foo where false")
-    		list(curs)
+        curs = self.conn.cursor(cursor_factory=psycopg2.extras.NamedTupleCursor)
+        curs.execute("select 1 as foo where false")
+        list(curs)

@@ -2,6 +2,7 @@ import datetime
 from time import localtime
 
 from psycopg2cffi import extensions
+from psycopg2cffi import sql
 from psycopg2cffi import tz
 from psycopg2cffi._impl.adapters import Binary, Date, Time, Timestamp
 from psycopg2cffi._impl.adapters import DateFromTicks, TimeFromTicks
